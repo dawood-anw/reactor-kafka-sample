@@ -42,7 +42,7 @@ public class PartitionProcessor extends AbstractScenario {
     public ReceiverOffset processRecord(TopicPartition topicPartition,
                                         ReceiverRecord<String, String> message) {
         System.out.printf("Processing record %s from partition %d in thread %s%n",
-                message.value(), topicPartition.partition(), Thread.currentThread().getName());
+                message.offset(), topicPartition.partition(), Thread.currentThread().getName());
         return message.receiverOffset();
     }
 
