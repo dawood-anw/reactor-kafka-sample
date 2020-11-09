@@ -35,25 +35,25 @@ public class PartitionProcessor extends AbstractScenario {
                 .flatMap(partitionFlux -> partitionFlux.publishOn(scheduler)
                         .map(r -> processRecord(partitionFlux.key(), r))
                         .sample(Duration.ofMillis(5000))
-                        .concatMap(offset -> offset.commit()))
-                .doOnCancel(() -> close());
+                        .concatMap(ReceiverOffset::commit))
+                .doOnCancel(this::close);
     }
 
     public ReceiverOffset processRecord(TopicPartition topicPartition,
                                         ReceiverRecord<String, String> message) {
-        System.out.println(String.format("Processing record %s from partition %d in thread %s",
-                message.value(), topicPartition, Thread.currentThread().getName()));
+        System.out.printf("Processing record %s from partition %d in thread %s%n",
+                message.value(), topicPartition.partition(), Thread.currentThread().getName());
         return message.receiverOffset();
     }
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) {
         PartitionProcessor partitionProcessor = new PartitionProcessor("10.0.1.207:9092", "taxilla-events");
         partitionProcessor.runScenario();
     }
 }
 
 abstract class AbstractScenario {
-    String bootstrapServers = "";
+    String bootstrapServers;
     String groupId = "sample-group";
     KafkaSender<String, String> sender;
     List<Disposable> disposables = new ArrayList<>();
@@ -63,7 +63,7 @@ abstract class AbstractScenario {
     }
     public abstract Flux<?> flux();
 
-    public void runScenario() throws InterruptedException {
+    public void runScenario() {
         flux().blockLast();
         close();
     }
@@ -97,14 +97,13 @@ abstract class AbstractScenario {
         props.put(ConsumerConfig.CLIENT_ID_CONFIG, "sample-consumer");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        return ReceiverOptions.<String, String>create(props);
+        return ReceiverOptions.create(props);
     }
 
     public ReceiverOptions<String, String> receiverOptions(Collection<String> topics) {
         return receiverOptions()
-                .addAssignListener(p -> System.out.println(
-                        String.format("Group %s partitions assigned %s", groupId, p)))
-                .addRevokeListener(p -> String.format("Group %s partitions assigned %s", groupId, p))
+                .addAssignListener(p -> System.out.printf("Group %s partitions assigned %s %n", groupId, p))
+                .addRevokeListener(p -> System.out.printf("Group %s partitions assigned %s %n", groupId, p))
                 .subscription(topics);
     }
 
