@@ -1,0 +1,28 @@
+plugins {
+	id 'org.springframework.boot' version '2.3.5.RELEASE'
+	id 'io.spring.dependency-management' version '1.0.10.RELEASE'
+	id 'java'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '11'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter'
+	implementation "io.projectreactor.kafka:reactor-kafka:1.1.0.RELEASE"
+	//implementation 'org.springframework.kafka:spring-kafka'
+	//implementation 'org.apache.kafka:kafka-streams'
+	testImplementation('org.springframework.boot:spring-boot-starter-test') {
+		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+	}
+	testImplementation 'org.springframework.kafka:spring-kafka-test'
+}
+
+test {
+	useJUnitPlatform()
+}
