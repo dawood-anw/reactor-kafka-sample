@@ -18,6 +18,8 @@ import reactor.kafka.sender.SenderOptions;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 public class PartitionProcessor extends AbstractScenario {
     private final String topic;
@@ -34,16 +36,35 @@ public class PartitionProcessor extends AbstractScenario {
                 .groupBy(m -> m.receiverOffset().topicPartition())
                 .flatMap(partitionFlux -> partitionFlux.publishOn(scheduler)
                         .map(r -> processRecord(partitionFlux.key(), r))
+                        .collectList()
+                        .map(completableFutures -> {
+                            CompletableFuture<Void> allFuturesResult =
+                                    CompletableFuture.allOf(completableFutures.toArray(new CompletableFuture[completableFutures.size()]));
+                            CompletableFuture<List<ReceiverOffset>> listCompletableFuture = allFuturesResult.thenApply(v ->
+                                    completableFutures.stream()
+                                            .map(future -> future.join())
+                                            .collect(Collectors.<ReceiverOffset>toList())
+                            );
+                            List<ReceiverOffset> join = listCompletableFuture.join();
+                            join.sort(Comparator.comparing(ReceiverOffset::offset));
+                            return join;
+                        })
+                        .flatMapIterable(msg -> msg)
                         .sample(Duration.ofMillis(5000))
                         .concatMap(ReceiverOffset::commit))
-                .doOnCancel(this::close);
+                        .doOnCancel(this::close);
     }
 
-    public ReceiverOffset processRecord(TopicPartition topicPartition,
+    public CompletableFuture<ReceiverOffset> processRecord(TopicPartition topicPartition,
                                         ReceiverRecord<String, String> message) {
-        System.out.printf("Processing record %s from partition %d in thread %s%n",
-                message.value(), topicPartition.partition(), Thread.currentThread().getName());
-        return message.receiverOffset();
+        return CompletableFuture.supplyAsync(() -> {
+            System.out.printf("Processing record %s from partition %d in thread %s%n",
+                    message.value(), topicPartition.partition(), Thread.currentThread().getName());
+            try {
+                Thread.sleep(2000);
+            } catch (Exception ex) {}
+            return message.receiverOffset();
+        }).thenApply(msg -> message.receiverOffset());
     }
 
     public static void main(String[] args) {
@@ -98,6 +119,7 @@ abstract class AbstractScenario {
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 1000);
         return ReceiverOptions.create(props);
     }
 
